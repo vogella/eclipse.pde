@@ -107,6 +107,7 @@ public class ClasspathContainerState {
 			while (!monitor.isCanceled() && (request = workQueue.poll()) != null) {
 				monitor.setWorkRemaining(WORK);
 				IProject project = request.project();
+				monitor.subTask(project.getName());
 				if (project.exists() && project.isOpen()) {
 					IPluginModelBase model = modelManager.findModel(project);
 					if (model != null && PluginProject.isJavaProject(project)) {
