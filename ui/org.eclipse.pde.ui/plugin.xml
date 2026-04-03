@@ -486,6 +486,14 @@
             name="%view.imagebrowser.name"
             restorable="true">
       </view>
+      <view
+            category="org.eclipse.pde.ui"
+            class="org.eclipse.pde.internal.ui.views.dependencygraph.PluginDependencyGraphView"
+            icon="$nl$/icons/eview16/plugin_depend.svg"
+            id="org.eclipse.pde.ui.PluginDependencyGraphView"
+            name="%views.dependencygraph.name"
+            restorable="true">
+      </view>
    </extension>
    <extension
          point="org.eclipse.ui.commands">
