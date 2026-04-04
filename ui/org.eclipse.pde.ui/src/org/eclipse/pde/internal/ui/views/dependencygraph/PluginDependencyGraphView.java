@@ -85,6 +85,9 @@ public class PluginDependencyGraphView extends ViewPart {
 	// Last right-click position (canvas coordinates) for the context menu
 	private int lastRightClickX, lastRightClickY;
 
+	// Track last known viewport size so we only re-zoom on actual resizes
+	private int lastViewportWidth, lastViewportHeight;
+
 	@Override
 	public void createPartControl(Composite parent) {
 		model = new DependencyGraphModel();
@@ -221,11 +224,16 @@ public class PluginDependencyGraphView extends ViewPart {
 			event.doit = false;
 		});
 
-		// Re-fit zoom when view is resized
+		// Re-fit zoom when view is actually resized (not on scroll)
 		scrolledComposite.addListener(SWT.Resize, event -> {
-			zoomToFit();
-			updateCanvasSize();
-			canvas.redraw();
+			Point size = scrolledComposite.getSize();
+			if (size.x != lastViewportWidth || size.y != lastViewportHeight) {
+				lastViewportWidth = size.x;
+				lastViewportHeight = size.y;
+				zoomToFit();
+				updateCanvasSize();
+				canvas.redraw();
+			}
 		});
 	}
 
