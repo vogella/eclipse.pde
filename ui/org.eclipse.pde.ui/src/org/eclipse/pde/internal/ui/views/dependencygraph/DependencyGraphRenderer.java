@@ -400,29 +400,65 @@ public class DependencyGraphRenderer {
 				Point ext = gc.textExtent(lbl);
 				gc.drawText(lbl, r.x + (r.width - ext.x) / 2, r.y + (r.height - ext.y) / 2, true);
 
-				// Badge counts (exported packages top-right, imported plug-ins bottom-left, imported packages bottom-right)
+				// Badge counts in small boxes (exported packages top-right, imported plug-ins bottom-left, imported packages bottom-right)
 				if (!isDimmed) {
 					GraphNode node = model.getNodes().get(id);
 					if (node != null) {
 						gc.setFont(badgeFont);
+						int badgePad = 2;
+						Color badgeBg = blend(bg, widgetFg, 0.15f);
 						Color badgeFg = isSelected ? d.getSystemColor(SWT.COLOR_LIST_SELECTION_TEXT)
 								: d.getSystemColor(SWT.COLOR_LIST_FOREGROUND);
-						gc.setForeground(badgeFg);
-
-						if (node.exportedPackageCount() > 0) {
-							String badge = String.valueOf(node.exportedPackageCount());
-							Point be = gc.textExtent(badge);
-							gc.drawText(badge, r.x + r.width - be.x - 3, r.y + 2, true);
-						}
-						if (node.importedPluginCount() > 0) {
-							String badge = String.valueOf(node.importedPluginCount());
-							Point be = gc.textExtent(badge);
-							gc.drawText(badge, r.x + 3, r.y + r.height - be.y - 2, true);
-						}
-						if (node.importedPackageCount() > 0) {
-							String badge = String.valueOf(node.importedPackageCount());
-							Point be = gc.textExtent(badge);
-							gc.drawText(badge, r.x + r.width - be.x - 3, r.y + r.height - be.y - 2, true);
+						Color badgeBorder = blend(widgetFg, bg, 0.6f);
+						try {
+							if (node.exportedPackageCount() > 0) {
+								String badge = String.valueOf(node.exportedPackageCount());
+								Point be = gc.textExtent(badge);
+								int bw = be.x + 2 * badgePad;
+								int bh = be.y + 2 * badgePad;
+								int bx = r.x + r.width - bw - 2;
+								int by = r.y + 2;
+								gc.setBackground(badgeBg);
+								gc.fillRectangle(bx, by, bw, bh);
+								gc.setForeground(badgeBorder);
+								gc.setLineWidth(1);
+								gc.drawRectangle(bx, by, bw, bh);
+								gc.setForeground(badgeFg);
+								gc.drawText(badge, bx + badgePad, by + badgePad, true);
+							}
+							if (node.importedPluginCount() > 0) {
+								String badge = String.valueOf(node.importedPluginCount());
+								Point be = gc.textExtent(badge);
+								int bw = be.x + 2 * badgePad;
+								int bh = be.y + 2 * badgePad;
+								int bx = r.x + 2;
+								int by = r.y + r.height - bh - 2;
+								gc.setBackground(badgeBg);
+								gc.fillRectangle(bx, by, bw, bh);
+								gc.setForeground(badgeBorder);
+								gc.setLineWidth(1);
+								gc.drawRectangle(bx, by, bw, bh);
+								gc.setForeground(badgeFg);
+								gc.drawText(badge, bx + badgePad, by + badgePad, true);
+							}
+							if (node.importedPackageCount() > 0) {
+								String badge = String.valueOf(node.importedPackageCount());
+								Point be = gc.textExtent(badge);
+								int bw = be.x + 2 * badgePad;
+								int bh = be.y + 2 * badgePad;
+								int bx = r.x + r.width - bw - 2;
+								int by = r.y + r.height - bh - 2;
+								gc.setBackground(badgeBg);
+								gc.fillRectangle(bx, by, bw, bh);
+								gc.setForeground(badgeBorder);
+								gc.setLineWidth(1);
+								gc.drawRectangle(bx, by, bw, bh);
+								gc.setForeground(badgeFg);
+								gc.drawText(badge, bx + badgePad, by + badgePad, true);
+							}
+						} finally {
+							badgeBg.dispose();
+							badgeBorder.dispose();
 						}
 						gc.setFont(nodeFont);
 					}
