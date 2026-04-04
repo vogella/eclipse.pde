@@ -13,20 +13,22 @@ package org.eclipse.pde.internal.ui.views.dependencygraph;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IToolBarManager;
+import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.Separator;
 import org.eclipse.pde.core.plugin.IPluginBase;
 import org.eclipse.pde.core.plugin.IPluginImport;
 import org.eclipse.pde.core.plugin.IPluginModelBase;
 import org.eclipse.pde.internal.ui.PDEPluginImages;
+import org.eclipse.pde.internal.ui.editor.plugin.DependenciesPage;
+import org.eclipse.pde.internal.ui.editor.plugin.ManifestEditor;
+import org.eclipse.ui.IEditorPart;
 import org.eclipse.pde.internal.ui.views.dependencygraph.DependencyGraphModel.GraphNode;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.ScrolledComposite;
+import org.eclipse.swt.events.MouseAdapter;
 import org.eclipse.swt.events.MouseEvent;
-import org.eclipse.swt.events.MouseListener;
-import org.eclipse.swt.events.MouseMoveListener;
 import org.eclipse.swt.events.PaintEvent;
 import org.eclipse.swt.graphics.Point;
-import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Canvas;
@@ -44,11 +46,14 @@ import org.eclipse.ui.part.ViewPart;
  * dependency direction (from dependent to dependency).
  * </p>
  * <p>
- * Features:
+ * Interactions:
  * <ul>
- * <li>Scrollable canvas with mouse-wheel zoom</li>
- * <li>Click a node to see import details in the detail panel</li>
- * <li>Toolbar toggle to show only re-exported dependencies</li>
+ * <li>Click a node to see its import details in the detail panel</li>
+ * <li>Double-click a node to open its MANIFEST.MF in the editor</li>
+ * <li>Hover a node to highlight its direct dependency chain</li>
+ * <li>Right-click a node for context menu actions</li>
+ * <li>Drag to pan the canvas; mouse wheel to zoom</li>
+ * <li>Type in the filter field to highlight matching plug-ins</li>
  * </ul>
  */
 public class PluginDependencyGraphView extends ViewPart {
@@ -61,6 +66,7 @@ public class PluginDependencyGraphView extends ViewPart {
 
 	private ScrolledComposite scrolledComposite;
 	private Canvas canvas;
+	private Text searchText;
 	private Text detailText;
 
 	private boolean showReexportOnly;
@@ -68,6 +74,16 @@ public class PluginDependencyGraphView extends ViewPart {
 	private Action zoomInAction;
 	private Action zoomOutAction;
 	private Action refreshAction;
+	private Action clearFilterAction;
+
+	// Pan state
+	private boolean panActive;
+	private boolean panDragged;
+	private int panStartMouseX, panStartMouseY;
+	private int panStartScrollX, panStartScrollY;
+
+	// Last right-click position (canvas coordinates) for the context menu
+	private int lastRightClickX, lastRightClickY;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -78,77 +94,152 @@ public class PluginDependencyGraphView extends ViewPart {
 		GridLayout layout = new GridLayout(1, false);
 		layout.marginHeight = 0;
 		layout.marginWidth = 0;
+		layout.verticalSpacing = 0;
 		main.setLayout(layout);
 
+		createSearchBar(main);
 		createGraphArea(main);
 		createDetailPanel(main);
 		createActions();
+		createContextMenu();
 		contributeToToolbar();
 
 		refreshGraph();
 	}
+
+	// ---- Search bar ------------------------------------------------------------
+
+	private void createSearchBar(Composite parent) {
+		Composite bar = new Composite(parent, SWT.NONE);
+		bar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		GridLayout gl = new GridLayout(2, false);
+		gl.marginHeight = 3;
+		gl.marginWidth = 6;
+		bar.setLayout(gl);
+
+		Label lbl = new Label(bar, SWT.NONE);
+		lbl.setText(Messages.PluginDependencyGraphView_filterLabel);
+
+		searchText = new Text(bar, SWT.SEARCH | SWT.ICON_CANCEL | SWT.ICON_SEARCH);
+		searchText.setMessage(Messages.PluginDependencyGraphView_searchPlaceholder);
+		searchText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+		searchText.addModifyListener(e -> {
+			renderer.setFilterText(searchText.getText());
+			if (canvas != null && !canvas.isDisposed()) {
+				canvas.redraw();
+			}
+		});
+	}
+
+	// ---- Graph canvas ----------------------------------------------------------
 
 	private void createGraphArea(Composite parent) {
 		scrolledComposite = new ScrolledComposite(parent, SWT.H_SCROLL | SWT.V_SCROLL | SWT.BORDER);
 		scrolledComposite.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 		scrolledComposite.setExpandHorizontal(true);
 		scrolledComposite.setExpandVertical(true);
+		scrolledComposite.setBackground(parent.getDisplay().getSystemColor(SWT.COLOR_WIDGET_BACKGROUND));
 
 		canvas = new Canvas(scrolledComposite, SWT.DOUBLE_BUFFERED);
+		canvas.setBackground(canvas.getDisplay().getSystemColor(SWT.COLOR_WIDGET_BACKGROUND));
 		scrolledComposite.setContent(canvas);
 
 		canvas.addPaintListener(this::paintGraph);
-		canvas.addMouseListener(new MouseListener() {
+
+		canvas.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseDown(MouseEvent e) {
-				handleClick(e.x, e.y);
-			}
-
-			@Override
-			public void mouseDoubleClick(MouseEvent e) {
-				// reserved
+				if (e.button == 1) {
+					panActive = true;
+					panDragged = false;
+					panStartMouseX = e.x;
+					panStartMouseY = e.y;
+					Point origin = scrolledComposite.getOrigin();
+					panStartScrollX = origin.x;
+					panStartScrollY = origin.y;
+				} else if (e.button == 3) {
+					lastRightClickX = e.x;
+					lastRightClickY = e.y;
+				}
 			}
 
 			@Override
 			public void mouseUp(MouseEvent e) {
-				// no-op
+				if (e.button == 1) {
+					panActive = false;
+					if (!panDragged) {
+						handleClick(e.x, e.y);
+					}
+					// Restore hand cursor if still over a node
+					String hit = renderer.hitTest(e.x, e.y);
+					canvas.setCursor(hit != null
+							? canvas.getDisplay().getSystemCursor(SWT.CURSOR_HAND)
+							: null);
+				}
 			}
-		});
-		canvas.addMouseMoveListener(new MouseMoveListener() {
+
 			@Override
-			public void mouseMove(MouseEvent e) {
-				String hit = renderer.hitTest(e.x, e.y);
-				renderer.setHoveredNode(hit);
-				canvas.setCursor(hit != null
-						? canvas.getDisplay().getSystemCursor(SWT.CURSOR_HAND)
-						: null);
-				canvas.redraw();
+			public void mouseDoubleClick(MouseEvent e) {
+				if (e.button == 1) {
+					String hitId = renderer.hitTest(e.x, e.y);
+					if (hitId != null) {
+						openManifest(hitId);
+					}
+				}
 			}
 		});
 
-		// Mouse wheel zoom
-		canvas.addListener(SWT.MouseVerticalWheel, event -> {
-			if ((event.stateMask & SWT.MOD1) != 0) {
-				float delta = event.count > 0 ? 0.1f : -0.1f;
-				renderer.setZoom(renderer.getZoom() + delta);
-				updateCanvasSize();
-				canvas.redraw();
-				event.doit = false;
+		canvas.addMouseMoveListener(e -> {
+			if (panActive) {
+				int dx = e.x - panStartMouseX;
+				int dy = e.y - panStartMouseY;
+				if (!panDragged && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+					panDragged = true;
+				}
+				if (panDragged) {
+					scrolledComposite.setOrigin(
+							Math.max(0, panStartScrollX - dx),
+							Math.max(0, panStartScrollY - dy));
+					canvas.setCursor(canvas.getDisplay().getSystemCursor(SWT.CURSOR_SIZEALL));
+					return;
+				}
 			}
+			String hit = renderer.hitTest(e.x, e.y);
+			renderer.setHoveredNode(hit);
+			canvas.setCursor(hit != null
+					? canvas.getDisplay().getSystemCursor(SWT.CURSOR_HAND)
+					: null);
+			canvas.redraw();
+		});
+
+		// Mouse wheel zooms in/out; use scrollbars (or drag) for panning
+		canvas.addListener(SWT.MouseVerticalWheel, event -> {
+			float delta = event.count > 0 ? 0.1f : -0.1f;
+			renderer.setZoom(renderer.getZoom() + delta);
+			updateCanvasSize();
+			canvas.redraw();
+			event.doit = false;
+		});
+
+		// Re-fit zoom when view is resized
+		scrolledComposite.addListener(SWT.Resize, event -> {
+			zoomToFit();
+			updateCanvasSize();
+			canvas.redraw();
 		});
 	}
+
+	// ---- Detail panel ----------------------------------------------------------
 
 	private void createDetailPanel(Composite parent) {
 		Composite detailComposite = new Composite(parent, SWT.NONE);
 		GridData gd = new GridData(SWT.FILL, SWT.BOTTOM, true, false);
-		gd.heightHint = 120;
+		gd.heightHint = 200;
 		detailComposite.setLayoutData(gd);
-		detailComposite.setLayout(new FillLayout());
+		detailComposite.setLayout(new GridLayout(1, false));
 
 		Label separator = new Label(detailComposite, SWT.SEPARATOR | SWT.HORIZONTAL);
-		separator.setVisible(true);
-
-		detailComposite.setLayout(new GridLayout(1, false));
+		separator.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
 
 		Label label = new Label(detailComposite, SWT.NONE);
 		label.setText(Messages.PluginDependencyGraphView_detailLabel);
@@ -158,8 +249,11 @@ public class PluginDependencyGraphView extends ViewPart {
 		detailText.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 	}
 
+	// ---- Actions ---------------------------------------------------------------
+
 	private void createActions() {
-		toggleReexportAction = new Action(Messages.PluginDependencyGraphView_showReexportOnly, IAction.AS_CHECK_BOX) {
+		toggleReexportAction = new Action(Messages.PluginDependencyGraphView_showReexportOnly,
+				IAction.AS_CHECK_BOX) {
 			@Override
 			public void run() {
 				showReexportOnly = isChecked();
@@ -196,6 +290,65 @@ public class PluginDependencyGraphView extends ViewPart {
 			}
 		};
 		refreshAction.setToolTipText(Messages.PluginDependencyGraphView_refreshTooltip);
+
+		clearFilterAction = new Action(Messages.PluginDependencyGraphView_clearFilter) {
+			@Override
+			public void run() {
+				clearFilter();
+			}
+		};
+		clearFilterAction.setToolTipText(Messages.PluginDependencyGraphView_clearFilterTooltip);
+	}
+
+	private void createContextMenu() {
+		MenuManager menuMgr = new MenuManager();
+		menuMgr.setRemoveAllWhenShown(true);
+		menuMgr.addMenuListener(mgr -> {
+			String hitId = renderer.hitTest(lastRightClickX, lastRightClickY);
+			if (hitId != null) {
+				mgr.add(new Action(Messages.PluginDependencyGraphView_openManifest) {
+					@Override
+					public void run() {
+						openManifest(hitId);
+					}
+				});
+				mgr.add(new Separator());
+				mgr.add(new Action(Messages.PluginDependencyGraphView_showDepsOf) {
+					@Override
+					public void run() {
+						model.setFocus(hitId, true);
+						clearSearchText();
+						refreshGraph();
+					}
+				});
+				mgr.add(new Action(Messages.PluginDependencyGraphView_showDependentsOf) {
+					@Override
+					public void run() {
+						model.setFocus(hitId, false);
+						clearSearchText();
+						refreshGraph();
+					}
+				});
+				if (model.hasFocus()) {
+					mgr.add(new Separator());
+					mgr.add(new Action(Messages.PluginDependencyGraphView_clearFilter) {
+						@Override
+						public void run() {
+							clearFilter();
+						}
+					});
+				}
+			} else if (model.hasFocus()
+					|| (searchText != null && !searchText.getText().isEmpty())) {
+				mgr.add(new Action(Messages.PluginDependencyGraphView_clearFilter) {
+					@Override
+					public void run() {
+						clearFilter();
+					}
+				});
+			}
+		});
+		canvas.setMenu(menuMgr.createContextMenu(canvas));
 	}
 
 	private void contributeToToolbar() {
@@ -205,12 +358,16 @@ public class PluginDependencyGraphView extends ViewPart {
 		mgr.add(zoomInAction);
 		mgr.add(zoomOutAction);
 		mgr.add(new Separator());
+		mgr.add(clearFilterAction);
 		mgr.add(refreshAction);
 	}
+
+	// ---- Graph lifecycle -------------------------------------------------------
 
 	private void refreshGraph() {
 		model.compute(showReexportOnly);
 		renderer.setSelectedNode(null);
+		zoomToFit();
 		updateCanvasSize();
 		if (detailText != null && !detailText.isDisposed()) {
 			detailText.setText(Messages.PluginDependencyGraphView_selectPlugin);
@@ -220,19 +377,28 @@ public class PluginDependencyGraphView extends ViewPart {
 		}
 	}
 
+	private void zoomToFit() {
+		if (scrolledComposite == null || scrolledComposite.isDisposed()) {
+			return;
+		}
+		Point viewportSize = scrolledComposite.getSize();
+		if (viewportSize.x > 0 && viewportSize.y > 0) {
+			renderer.setZoom(renderer.computeZoomToFit(viewportSize.x, viewportSize.y));
+		}
+	}
+
 	private void updateCanvasSize() {
 		Point size = renderer.computeSize();
-		// Ensure at least the scroll area is filled
 		Point parentSize = scrolledComposite.getSize();
-		int w = Math.max(size.x, parentSize.x);
-		int h = Math.max(size.y, parentSize.y);
-		canvas.setSize(w, h);
-		scrolledComposite.setMinSize(w, h);
+		canvas.setSize(Math.max(size.x, parentSize.x), Math.max(size.y, parentSize.y));
+		scrolledComposite.setMinSize(size.x, size.y);
 	}
 
 	private void paintGraph(PaintEvent e) {
 		renderer.render(e.gc, canvas.getClientArea());
 	}
+
+	// ---- Interaction handlers --------------------------------------------------
 
 	private void handleClick(int x, int y) {
 		String hitId = renderer.hitTest(x, y);
@@ -245,9 +411,7 @@ public class PluginDependencyGraphView extends ViewPart {
 		}
 
 		GraphNode node = model.getNodes().get(hitId);
-		if (node == null) {
-			return;
-		}
+		if (node == null) return;
 
 		StringBuilder sb = new StringBuilder();
 		IPluginModelBase pluginModel = node.model();
@@ -263,22 +427,38 @@ public class PluginDependencyGraphView extends ViewPart {
 			sb.append(Messages.PluginDependencyGraphView_noImports);
 		} else {
 			for (IPluginImport imp : imports) {
-				sb.append("  "); //$NON-NLS-1$
-				sb.append(imp.getId());
+				sb.append("  ").append(imp.getId()); //$NON-NLS-1$
 				if (imp.getVersion() != null && !imp.getVersion().isEmpty()) {
 					sb.append(" [").append(imp.getVersion()).append(']'); //$NON-NLS-1$
 				}
-				if (imp.isReexported()) {
-					sb.append(Messages.PluginDependencyGraphView_reexported);
-				}
-				if (imp.isOptional()) {
-					sb.append(Messages.PluginDependencyGraphView_optional);
-				}
+				if (imp.isReexported()) sb.append(Messages.PluginDependencyGraphView_reexported);
+				if (imp.isOptional()) sb.append(Messages.PluginDependencyGraphView_optional);
 				sb.append('\n');
 			}
 		}
-
 		detailText.setText(sb.toString());
+	}
+
+	private void openManifest(String pluginId) {
+		GraphNode node = model.getNodes().get(pluginId);
+		if (node == null) return;
+		IEditorPart editor = ManifestEditor.openPluginEditor(node.model());
+		if (editor instanceof ManifestEditor me) {
+			me.setActivePage(DependenciesPage.PAGE_ID);
+		}
+	}
+
+	private void clearFilter() {
+		model.clearFocus();
+		clearSearchText();
+		refreshGraph();
+	}
+
+	private void clearSearchText() {
+		if (searchText != null && !searchText.isDisposed() && !searchText.getText().isEmpty()) {
+			searchText.setText(""); //$NON-NLS-1$
+			// ModifyListener will call renderer.setFilterText("") and redraw
+		}
 	}
 
 	@Override

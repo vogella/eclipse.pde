@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.eclipse.osgi.service.resolver.BundleDescription;
+import org.eclipse.osgi.service.resolver.ExportPackageDescription;
+import org.eclipse.osgi.service.resolver.ImportPackageSpecification;
 import org.eclipse.pde.core.plugin.IPluginBase;
 import org.eclipse.pde.core.plugin.IPluginImport;
 import org.eclipse.pde.core.plugin.IPluginModelBase;
@@ -33,7 +36,8 @@ import org.eclipse.pde.core.plugin.PluginRegistry;
 public class DependencyGraphModel {
 
 	/** A node in the dependency graph representing a single workspace plug-in */
-	public record GraphNode(String pluginId, IPluginModelBase model, IPluginImport[] imports) {
+	public record GraphNode(String pluginId, IPluginModelBase model, IPluginImport[] imports,
+			int exportedPackageCount, int importedPluginCount, int importedPackageCount) {
 	}
 
 	/** A directed edge from a dependent to a dependency */
@@ -44,6 +48,28 @@ public class DependencyGraphModel {
 	private final List<GraphEdge> edges = new ArrayList<>();
 	private final Map<String, Integer> layerAssignment = new HashMap<>();
 	private int layerCount;
+
+	/**
+	 * When non-null, restricts the graph to the named plug-in and its direct
+	 * workspace dependencies ({@code focusDepsOnly=true}) or direct workspace
+	 * dependents ({@code focusDepsOnly=false}).
+	 */
+	private String focusNodeId = null;
+	private boolean focusDepsOnly = true;
+
+	/** Restricts the graph to the given plug-in and its direct neighbors. */
+	public void setFocus(String nodeId, boolean depsOnly) {
+		this.focusNodeId = nodeId;
+		this.focusDepsOnly = depsOnly;
+	}
+
+	public void clearFocus() {
+		this.focusNodeId = null;
+	}
+
+	public boolean hasFocus() {
+		return focusNodeId != null;
+	}
 
 	/**
 	 * Recomputes the graph from the current workspace plug-in models.
@@ -64,7 +90,23 @@ public class DependencyGraphModel {
 			IPluginBase base = model.getPluginBase();
 			if (base != null && base.getId() != null) {
 				workspaceIds.add(base.getId());
-				nodes.put(base.getId(), new GraphNode(base.getId(), model, base.getImports()));
+				int exportedPkgs = 0;
+				int importedPkgs = 0;
+				BundleDescription desc = model.getBundleDescription();
+				if (desc != null) {
+					ExportPackageDescription[] exports = desc.getExportPackages();
+					if (exports != null) {
+						exportedPkgs = exports.length;
+					}
+					ImportPackageSpecification[] ipkgs = desc.getImportPackages();
+					if (ipkgs != null) {
+						importedPkgs = ipkgs.length;
+					}
+				}
+				IPluginImport[] imports = base.getImports();
+				int importedPlugins = imports != null ? imports.length : 0;
+				nodes.put(base.getId(), new GraphNode(base.getId(), model, imports,
+						exportedPkgs, importedPlugins, importedPkgs));
 			}
 		}
 
@@ -81,6 +123,21 @@ public class DependencyGraphModel {
 				}
 				edges.add(new GraphEdge(node.pluginId(), imp.getId(), imp.isReexported(), imp.isOptional()));
 			}
+		}
+
+		// When a focus node is set, restrict the graph to its direct neighborhood
+		if (focusNodeId != null && nodes.containsKey(focusNodeId)) {
+			Set<String> keep = new HashSet<>();
+			keep.add(focusNodeId);
+			for (GraphEdge edge : edges) {
+				if (focusDepsOnly && edge.fromId().equals(focusNodeId)) {
+					keep.add(edge.toId());
+				} else if (!focusDepsOnly && edge.toId().equals(focusNodeId)) {
+					keep.add(edge.fromId());
+				}
+			}
+			nodes.keySet().retainAll(keep);
+			edges.removeIf(e -> !keep.contains(e.fromId()) || !keep.contains(e.toId()));
 		}
 
 		computeLayers();
