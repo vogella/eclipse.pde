@@ -32,6 +32,13 @@ public class Messages extends NLS {
 	public static String PluginDependencyGraphView_noImports;
 	public static String PluginDependencyGraphView_reexported;
 	public static String PluginDependencyGraphView_optional;
+	public static String PluginDependencyGraphView_filterLabel;
+	public static String PluginDependencyGraphView_searchPlaceholder;
+	public static String PluginDependencyGraphView_openManifest;
+	public static String PluginDependencyGraphView_showDepsOf;
+	public static String PluginDependencyGraphView_showDependentsOf;
+	public static String PluginDependencyGraphView_clearFilter;
+	public static String PluginDependencyGraphView_clearFilterTooltip;
 
 	static {
 		NLS.initializeMessages(BUNDLE_NAME, Messages.class);
