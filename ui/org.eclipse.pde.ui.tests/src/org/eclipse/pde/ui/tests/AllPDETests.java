@@ -17,6 +17,7 @@ import org.eclipse.pde.core.tests.internal.AllPDECoreTests;
 import org.eclipse.pde.core.tests.internal.classpath.ClasspathResolutionTest;
 import org.eclipse.pde.core.tests.internal.core.builders.BundleErrorReporterTest;
 import org.eclipse.pde.core.tests.internal.util.PDESchemaHelperTest;
+import org.eclipse.pde.internal.core.RequiredPluginsClasspathContainerComparatorTest;
 import org.eclipse.pde.ui.tests.build.properties.AllValidatorTests;
 import org.eclipse.pde.ui.tests.classpathcontributor.ClasspathContributorTest;
 import org.eclipse.pde.ui.tests.classpathresolver.ClasspathResolverTest;
@@ -63,6 +64,7 @@ import org.junit.platform.suite.api.Suite;
 	ClasspathContributorTest.class, //
 	DynamicPluginProjectReferencesTest.class, //
 	ClasspathResolutionTest.class, //
+	RequiredPluginsClasspathContainerComparatorTest.class, //
 	BundleErrorReporterTest.class, //
 	AllPDECoreTests.class, //
 	ProjectSmartImportTest.class, //

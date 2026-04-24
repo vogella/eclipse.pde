@@ -97,6 +97,15 @@ class RequiredPluginsClasspathContainer {
 	private static final Comparator<BundleDescription> BUNDLE_VERSION = Comparator
 			.comparing(BundleDescription::getVersion);
 
+	/**
+	 * Order for transitive dependency classpath entries: symbolic name first,
+	 * higher version first as tiebreaker so the classpath is deterministic
+	 * when two bundles share a symbolic name (e.g. two versions of
+	 * {@code jakarta.annotation-api} coexist in the target).
+	 */
+	static final Comparator<BundleDescription> SYMBOLIC_NAME_THEN_HIGHER_VERSION = Comparator
+			.comparing(BundleDescription::getSymbolicName).thenComparing(BUNDLE_VERSION.reversed());
+
 	private final IPluginModelBase fModel;
 	private final IBuild fBuild;
 
@@ -636,7 +645,8 @@ class RequiredPluginsClasspathContainer {
 		var closure = DependencyManager.findRequirementsClosure(roots, INCLUDE_OPTIONAL_DEPENDENCIES);
 		String systemBundleBSN = TargetPlatformHelper.getPDEState().getSystemBundle();
 		return closure.stream().filter(b -> !b.getSymbolicName().equals(systemBundleBSN))
-				.sorted(Comparator.comparing(BundleDescription::getSymbolicName)).toList();
+				.sorted(SYMBOLIC_NAME_THEN_HIGHER_VERSION)
+				.toList();
 	}
 
 	private void addSecondaryDependencies(BundleDescription desc, Set<BundleDescription> added,
