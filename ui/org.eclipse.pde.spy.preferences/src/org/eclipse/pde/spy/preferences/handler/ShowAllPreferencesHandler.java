@@ -22,6 +22,7 @@ import org.eclipse.core.runtime.preferences.ConfigurationScope;
 import org.eclipse.core.runtime.preferences.DefaultScope;
 import org.eclipse.core.runtime.preferences.IPreferenceNodeVisitor;
 import org.eclipse.core.runtime.preferences.InstanceScope;
+import org.eclipse.core.runtime.preferences.UserScope;
 import org.eclipse.e4.core.di.annotations.Execute;
 import org.eclipse.e4.core.services.events.IEventBroker;
 import org.eclipse.jface.dialogs.ErrorDialog;
@@ -32,6 +33,9 @@ import org.eclipse.swt.widgets.Shell;
 import org.osgi.service.prefs.BackingStoreException;
 
 public class ShowAllPreferencesHandler {
+
+	private static final String DEFAULT_VALUE_MARKER = "*default*";
+
 	@Execute
 	public void execute(Shell shell, IEventBroker eventBroker) {
 		Map<String, PreferenceNodeEntry> preferenceEntries = new HashMap<>();
@@ -44,7 +48,7 @@ public class ShowAllPreferencesHandler {
 			PreferenceNodeEntry preferenceNodeEntry = preferenceEntries.computeIfAbsent(node.absolutePath(),
 					PreferenceNodeEntry::new);
 			for (String key : keys) {
-				String value = node.get(key, "*default*");
+				String value = node.get(key, DEFAULT_VALUE_MARKER);
 				preferenceNodeEntry.addChildren(new PreferenceEntry(node.absolutePath(), key, value, value));
 			}
 			return true;
@@ -54,6 +58,7 @@ public class ShowAllPreferencesHandler {
 			ConfigurationScope.INSTANCE.getNode("").accept(gatherer);
 			DefaultScope.INSTANCE.getNode("").accept(gatherer);
 			InstanceScope.INSTANCE.getNode("").accept(gatherer);
+			UserScope.INSTANCE.getNode("").accept(gatherer);
 		} catch (BackingStoreException e) {
 			ErrorDialog.openError(shell, "BackingStoreException", e.getLocalizedMessage(),
 					Status.error(e.getMessage()));
