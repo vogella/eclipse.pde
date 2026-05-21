@@ -58,7 +58,7 @@ public class PreferenceSpyAddon {
 
 	@Inject
 	@Optional
-	public void initialzePreferenceSpy(
+	public void initializePreferenceSpy(
 			@Preference(value = PreferenceConstants.TRACE_PREFERENCES) boolean tracePreferences) {
 		if (tracePreferences) {
 			registerVisitors();
