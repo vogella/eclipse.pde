@@ -34,7 +34,9 @@ import static org.osgi.framework.Constants.REQUIRE_CAPABILITY;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.AbstractSet;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,6 +46,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.osgi.service.resolver.BundleDescription;
+import org.eclipse.osgi.service.resolver.State;
 import org.eclipse.pde.core.plugin.IPluginModelBase;
 import org.eclipse.pde.core.plugin.PluginRegistry;
 import org.eclipse.pde.core.target.NameVersionDescriptor;
@@ -60,6 +63,9 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.rules.TestRule;
 import org.osgi.framework.Constants;
+import org.osgi.framework.namespace.BundleNamespace;
+import org.osgi.framework.namespace.HostNamespace;
+import org.osgi.framework.namespace.PackageNamespace;
 
 public class DependencyManagerTest {
 
@@ -368,7 +374,84 @@ public class DependencyManagerTest {
 		assertThat(optionalClosure).isEqualTo(Set.of(bundleOptional, bundleA1, bundleA2, bundleProvider));
 	}
 
+	/**
+	 * A bundle wiring obtained from PDE's {@link State} returns {@code null}
+	 * from {@code getRequiredWires()} once the state is re-resolved, so a
+	 * closure computation that has already passed the {@code isInUse()} check
+	 * must not fail on the now stale wiring.
+	 */
+	@Test
+	public void testFindRequirementsClosure_stateReResolvedDuringTraversal() throws Exception {
+
+		setTargetPlatform( //
+				bundle("bundle.a", "1.0.0", //
+						entry(EXPORT_PACKAGE, "bundle.a.pack" + version("1.0.0"))),
+
+				bundle("bundle.b", "1.0.0", //
+						entry(REQUIRE_BUNDLE, "bundle.a")),
+
+				bundle("bundle.c", "1.0.0", //
+						entry(REQUIRE_BUNDLE, "bundle.b")));
+
+		BundleDescription bundleC = bundleDescription("bundle.c", "1.0.0");
+		BundleDescription bundleB = bundleDescription("bundle.b", "1.0.0");
+
+		// Re-resolve while the closure walk processes the second bundle, which
+		// is the window between its isInUse() check and its wire lookup.
+		Set<String> namespaces = reResolveStateWhileStreaming(BUILD_RELEVANT_NAMESPACES,
+				bundleC.getContainingState(), 2);
+
+		Set<BundleDescription> closure = findRequirementsClosure(Set.of(bundleC), namespaces);
+
+		// bundle.a is unreachable because bundle.b's wires were lost, but the
+		// walk itself completes.
+		assertThat(closure).isEqualTo(Set.of(bundleC, bundleB));
+	}
+
 	// --- utility methods ---
+
+	private static final Set<String> BUILD_RELEVANT_NAMESPACES = Set.of(BundleNamespace.BUNDLE_NAMESPACE,
+			PackageNamespace.PACKAGE_NAMESPACE, HostNamespace.HOST_NAMESPACE);
+
+	/**
+	 * Returns the given namespaces as a set that re-resolves {@code state} while
+	 * its {@code triggerIteration}-th stream is consumed, which deterministically
+	 * injects the state change a concurrent model update would cause.
+	 */
+	private static Set<String> reResolveStateWhileStreaming(Set<String> namespaces, State state,
+			int triggerIteration) {
+		int[] iteration = { 0 };
+		return new AbstractSet<>() {
+			@Override
+			public Iterator<String> iterator() {
+				boolean trigger = ++iteration[0] == triggerIteration;
+				Iterator<String> delegate = namespaces.iterator();
+				return new Iterator<>() {
+					private boolean fired;
+
+					@Override
+					public boolean hasNext() {
+						return delegate.hasNext();
+					}
+
+					@Override
+					public String next() {
+						String namespace = delegate.next();
+						if (trigger && !fired) {
+							fired = true;
+							state.resolve(false);
+						}
+						return namespace;
+					}
+				};
+			}
+
+			@Override
+			public int size() {
+				return namespaces.size();
+			}
+		};
+	}
 
 	@SafeVarargs
 	private void setTargetPlatform(Map.Entry<NameVersionDescriptor, Map<String, String>>... pluginDescriptions)
