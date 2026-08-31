@@ -34,6 +34,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IResourceChangeEvent;
 import org.eclipse.core.resources.IResourceChangeListener;
 import org.eclipse.core.resources.IResourceDelta;
+import org.eclipse.core.resources.IStorage;
 import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
@@ -89,6 +90,7 @@ import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IEditorSite;
 import org.eclipse.ui.IFileEditorInput;
+import org.eclipse.ui.IStorageEditorInput;
 import org.eclipse.ui.IURIEditorInput;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PartInitException;
@@ -163,32 +165,41 @@ public class TargetEditor extends FormEditor {
 
 	@Override
 	protected void pageChange(int newPageIndex) {
+		if (newPageIndex != fSourceTabIndex && getCurrentPage() == fSourceTabIndex && !updateTargetFromDocument()) {
+			return;
+		}
+		super.pageChange(newPageIndex);
+	}
+
+	/**
+	 * Parses the source page into the target model. Returns false and stays on
+	 * the source page if the document is not a valid target definition.
+	 */
+	private boolean updateTargetFromDocument() {
 		try {
-			if (newPageIndex != fSourceTabIndex && getCurrentPage() == fSourceTabIndex) {
-				String text = fTargetDocument.get();
-				byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-				InputStream stream = new ByteArrayInputStream(bytes);
-				ITargetDefinition currentTarget = getTarget();
-				ITargetPlatformService service = PDECore.getDefault().acquireService(ITargetPlatformService.class);
-				ITargetDefinition newTarget = service.newTarget();
-				TargetDefinitionPersistenceHelper.initFromXML(newTarget, stream);
-				if (currentTarget instanceof TargetDefinition && ((TargetDefinition) currentTarget).isContentEqual(newTarget)) {
-					ITargetLocation[] oldLocations = currentTarget.getTargetLocations();
-					boolean wasResolved = currentTarget.isResolved();
-					stream.reset();
-					TargetDefinitionPersistenceHelper.initFromXML(currentTarget, stream);
-					if (wasResolved) {
-						currentTarget.setTargetLocations(oldLocations);
-					}
-				} else {
-					stream.reset();
-					TargetDefinitionPersistenceHelper.initFromXML(currentTarget, stream);
-					if (!getTarget().isResolved()) {
-						getTargetChangedListener().contentsChanged(getTarget(), this, true, false);
-					}
+			String text = fTargetDocument.get();
+			byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+			InputStream stream = new ByteArrayInputStream(bytes);
+			ITargetDefinition currentTarget = getTarget();
+			ITargetPlatformService service = PDECore.getDefault().acquireService(ITargetPlatformService.class);
+			ITargetDefinition newTarget = service.newTarget();
+			TargetDefinitionPersistenceHelper.initFromXML(newTarget, stream);
+			if (currentTarget instanceof TargetDefinition && ((TargetDefinition) currentTarget).isContentEqual(newTarget)) {
+				ITargetLocation[] oldLocations = currentTarget.getTargetLocations();
+				boolean wasResolved = currentTarget.isResolved();
+				stream.reset();
+				TargetDefinitionPersistenceHelper.initFromXML(currentTarget, stream);
+				if (wasResolved) {
+					currentTarget.setTargetLocations(oldLocations);
+				}
+			} else {
+				stream.reset();
+				TargetDefinitionPersistenceHelper.initFromXML(currentTarget, stream);
+				if (!getTarget().isResolved()) {
+					getTargetChangedListener().contentsChanged(getTarget(), this, true, false);
 				}
 			}
-			super.pageChange(newPageIndex);
+			return true;
 		} catch (CoreException e) {
 			setActivePage(fSourceTabIndex);
 			showError(PDEUIMessages.TargetEditor_5, e);
@@ -201,10 +212,15 @@ public class TargetEditor extends FormEditor {
 			CoreException ce = new CoreException(Status.error(e.getMessage(), e));
 			showError(PDEUIMessages.TargetEditor_7, ce);
 		}
+		return false;
 	}
 
 	@Override
 	public void doSave(IProgressMonitor monitor) {
+		if (!fInputHandler.isFileBased()) {
+			doSaveAs();
+			return;
+		}
 		ITargetHandle handle = fInputHandler.getTarget().getHandle();
 		fInputHandler.setSaving(true);
 		if (!isActiveTabTextualEditor()) {
@@ -221,6 +237,17 @@ public class TargetEditor extends FormEditor {
 
 	@Override
 	public void doSaveAs() {
+		saveAs();
+	}
+
+	/**
+	 * Asks for a workspace file and saves the target there. Returns whether
+	 * the target was saved.
+	 */
+	private boolean saveAs() {
+		if (isActiveTabTextualEditor() && !updateTargetFromDocument()) {
+			return false;
+		}
 		commitPages(true);
 		ITargetDefinition target = getTarget();
 
@@ -236,7 +263,7 @@ public class TargetEditor extends FormEditor {
 		IPath path = dialog.getResult();
 
 		if (path == null) {
-			return;
+			return false;
 		}
 		if (!"target".equalsIgnoreCase(path.getFileExtension())) { //$NON-NLS-1$
 			path = path.addFileExtension("target"); //$NON-NLS-1$
@@ -249,12 +276,18 @@ public class TargetEditor extends FormEditor {
 			try {
 				WorkspaceFileTargetHandle newFileTarget = new WorkspaceFileTargetHandle(file);
 				newFileTarget.save(target);
-				setInput(new FileEditorInput(file));
+				FileEditorInput newInput = new FileEditorInput(file);
+				setInput(newInput);
+				setTextualEditorInput(newInput);
+				fDirty = false;
+				editorDirtyStateChanged();
+				return true;
 			} catch (CoreException e) {
 				PDEPlugin.log(e);
 				showError(PDEUIMessages.TargetEditor_3, e);
 			}
 		}
+		return false;
 	}
 
 	@Override
@@ -293,7 +326,8 @@ public class TargetEditor extends FormEditor {
 	 */
 	@Override
 	public void init(IEditorSite site, IEditorInput input) throws PartInitException {
-		if (!(input instanceof IFileEditorInput) && !(input instanceof IURIEditorInput)) {
+		if (!(input instanceof IFileEditorInput) && !(input instanceof IURIEditorInput)
+				&& !(input instanceof IStorageEditorInput)) {
 			throw new PartInitException(NLS.bind(PDEUIMessages.TargetEditor_6, input.getClass().getName()));
 		}
 		super.init(site, input);
@@ -396,7 +430,11 @@ public class TargetEditor extends FormEditor {
 					public void linkActivated(HyperlinkEvent e) {
 						IEditorPart editorPart = TargetEditor.this;
 						IWorkbenchPage page = editorPart.getSite().getPage();
-						if (TargetEditor.this.isDirty()) {
+						if (!fInputHandler.isFileBased()) {
+							if (!saveAs()) {
+								return;
+							}
+						} else if (TargetEditor.this.isDirty()) {
 							page.saveEditor(editorPart, true);
 						}
 						ITargetDefinition target = getTarget();
@@ -517,6 +555,10 @@ public class TargetEditor extends FormEditor {
 			fInput = input;
 			fTargetFileInWorkspace = null;
 			fTarget = null;
+			PDEPlugin.getWorkspace().removeResourceChangeListener(this);
+			if (!isFileBased()) {
+				return;
+			}
 			File targetFile = null;
 			if (input instanceof IFileEditorInput) {
 				fTargetFileInWorkspace = ((IFileEditorInput) input).getFile();
@@ -533,6 +575,15 @@ public class TargetEditor extends FormEditor {
 				TargetEditor.this.close(false);
 			}
 			PDEPlugin.getWorkspace().addResourceChangeListener(this);
+		}
+
+		/**
+		 * Returns whether the input is a file that can be written back to. A
+		 * plain storage input, for example a file revision from the history,
+		 * is read-only and can only be persisted with Save As.
+		 */
+		public boolean isFileBased() {
+			return fInput instanceof IFileEditorInput || fInput instanceof IURIEditorInput;
 		}
 
 		/**
@@ -561,6 +612,8 @@ public class TargetEditor extends FormEditor {
 				} else if (fInput instanceof IURIEditorInput) {
 					ITargetHandle externalTarget = service.getTarget(((IURIEditorInput) fInput).getURI());
 					fTarget = externalTarget.getTargetDefinition();
+				} else if (fInput instanceof IStorageEditorInput storageInput) {
+					fTarget = loadFromStorage(service, storageInput.getStorage());
 				}
 			} catch (CoreException | IllegalArgumentException e) {
 				fTarget = service.newTarget();
@@ -569,6 +622,17 @@ public class TargetEditor extends FormEditor {
 			PlatformUI.getWorkbench().getDisplay().asyncExec(
 					() -> TargetEditor.this.getTargetChangedListener().contentsChanged(fTarget, this, true, false));
 			return fTarget;
+		}
+
+		private ITargetDefinition loadFromStorage(ITargetPlatformService service, IStorage storage)
+				throws CoreException {
+			ITargetDefinition target = service.newTarget();
+			try (InputStream stream = storage.getContents()) {
+				TargetDefinitionPersistenceHelper.initFromXML(target, stream);
+			} catch (ParserConfigurationException | SAXException | IOException e) {
+				throw new CoreException(Status.error(e.getMessage(), e));
+			}
+			return target;
 		}
 
 		private ITargetPlatformService getTargetPlatformService() throws CoreException {
@@ -581,7 +645,7 @@ public class TargetEditor extends FormEditor {
 
 		@Override
 		public void resourceChanged(IResourceChangeEvent event) {
-			if (event.getType() == IResourceChangeEvent.POST_CHANGE) {
+			if (event.getType() == IResourceChangeEvent.POST_CHANGE && fTargetFileInWorkspace != null) {
 				IResourceDelta delta = event.getDelta().findMember(fTargetFileInWorkspace.getFullPath());
 				if (delta != null) {
 					if (delta.getKind() == IResourceDelta.REMOVED) {
@@ -614,8 +678,6 @@ public class TargetEditor extends FormEditor {
 		PlatformUI.getWorkbench().getHelpSystem().setHelp(editorControl, IHelpContextIds.TARGET_EDITOR_SOURCE_PAGE);
 		setPageText(fSourceTabIndex, PDEUIMessages.GenericEditorTab_title);
 
-		fTargetDocument = fTextualEditor.getDocumentProvider().getDocument(getEditorInput());
-
 		fTargetDocumentListener = new IDocumentListener() {
 			@Override
 			public void documentChanged(DocumentEvent event) {
@@ -627,7 +689,21 @@ public class TargetEditor extends FormEditor {
 				// documentChanged used instead
 			}
 		};
+		bindTargetDocument(getEditorInput());
+	}
+
+	private void bindTargetDocument(IEditorInput input) {
+		fTargetDocument = fTextualEditor.getDocumentProvider().getDocument(input);
 		fTargetDocument.addDocumentListener(fTargetDocumentListener);
+	}
+
+	private void setTextualEditorInput(IEditorInput input) {
+		if (fTextualEditor == null) {
+			return;
+		}
+		fTargetDocument.removeDocumentListener(fTargetDocumentListener);
+		fTextualEditor.setInput(input);
+		bindTargetDocument(input);
 	}
 
 	private void updateTextualEditor() {

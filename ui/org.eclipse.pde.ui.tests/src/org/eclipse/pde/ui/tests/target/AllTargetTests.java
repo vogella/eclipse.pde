@@ -25,7 +25,8 @@ import org.junit.platform.suite.api.Suite;
 		TargetDefinitionResolutionTests.class, //
 		TargetDefinitionFeatureResolutionTests.class, //
 		IUBundleContainerTests.class, //
-		ProfileContainerTests.class })
+		ProfileContainerTests.class, //
+		TargetEditorStorageInputTests.class })
 public class AllTargetTests {
 
 }
