@@ -35,13 +35,13 @@ import static org.eclipse.pde.internal.genericeditor.target.extension.model.ITar
 import static org.eclipse.pde.internal.genericeditor.target.extension.model.ITargetConstants.VM_ARGS_TAG;
 import static org.eclipse.pde.internal.genericeditor.target.extension.model.ITargetConstants.WS_TAG;
 
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.text.TextAttribute;
 import org.eclipse.jface.text.rules.ICharacterScanner;
 import org.eclipse.jface.text.rules.IToken;
 import org.eclipse.jface.text.rules.Token;
 import org.eclipse.jface.text.rules.WordRule;
 import org.eclipse.pde.internal.genericeditor.target.extension.model.ITargetConstants;
-import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.editors.text.SyntaxThemeConstants;
 
 /**
@@ -55,8 +55,7 @@ public class TargetPlatformTagRule extends WordRule {
 			ARTIFACT_ID_TAG, ITargetConstants.IMPLICITDEPENDENCIES_TAG, ITargetConstants.PLUGIN_TAG };
 
 	private final IToken tagToken = new Token(
-			new TextAttribute(PlatformUI.getWorkbench().getThemeManager().getCurrentTheme().getColorRegistry()
-					.get(SyntaxThemeConstants.TAG_COLOR)));
+			new TextAttribute(JFaceResources.getColorRegistry().get(SyntaxThemeConstants.TAG_COLOR)));
 
 	public TargetPlatformTagRule() {
 		super(new AlphanumericDetector());

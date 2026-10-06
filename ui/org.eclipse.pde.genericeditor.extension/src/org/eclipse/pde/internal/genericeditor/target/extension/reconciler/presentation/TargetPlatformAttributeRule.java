@@ -28,11 +28,11 @@ import static org.eclipse.pde.internal.genericeditor.target.extension.model.ITar
 import static org.eclipse.pde.internal.genericeditor.target.extension.model.ITargetConstants.UNIT_ID_ATTR;
 import static org.eclipse.pde.internal.genericeditor.target.extension.model.ITargetConstants.UNIT_VERSION_ATTR;
 
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.text.TextAttribute;
 import org.eclipse.jface.text.rules.IToken;
 import org.eclipse.jface.text.rules.Token;
 import org.eclipse.jface.text.rules.WordRule;
-import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.editors.text.SyntaxThemeConstants;
 
 /**
@@ -46,8 +46,7 @@ public class TargetPlatformAttributeRule extends WordRule {
 			LOCATION_FOLLOW_REPOSITORY_REFERENCES_ATTR, LOCATION_INCLUDE_SOURCE_ATTR, INCLUDE_DEPENDENCY_DEPTH,
 			INCLUDE_DEPENDENCY_SCOPES, MISSING_MANIFEST };
 	private final IToken attributeToken = new Token(
-			new TextAttribute(PlatformUI.getWorkbench().getThemeManager().getCurrentTheme().getColorRegistry()
-					.get(SyntaxThemeConstants.ATTRIBUTE_NAME_COLOR)));
+			new TextAttribute(JFaceResources.getColorRegistry().get(SyntaxThemeConstants.ATTRIBUTE_NAME_COLOR)));
 
 	public TargetPlatformAttributeRule() {
 		super(new AlphanumericDetector());

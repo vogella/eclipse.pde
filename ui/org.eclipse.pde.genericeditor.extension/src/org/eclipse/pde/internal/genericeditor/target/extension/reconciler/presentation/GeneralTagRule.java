@@ -14,20 +14,20 @@
  *******************************************************************************/
 package org.eclipse.pde.internal.genericeditor.target.extension.reconciler.presentation;
 
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.text.TextAttribute;
 import org.eclipse.jface.text.rules.ICharacterScanner;
 import org.eclipse.jface.text.rules.IRule;
 import org.eclipse.jface.text.rules.IToken;
 import org.eclipse.jface.text.rules.Token;
-import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.editors.text.SyntaxThemeConstants;
 
 /**
  * Simple tag matcher
  */
 public class GeneralTagRule implements IRule {
-	private final IToken tagToken = new Token(new TextAttribute(PlatformUI.getWorkbench().getThemeManager().getCurrentTheme()
-			.getColorRegistry().get(SyntaxThemeConstants.TAG_COLOR)));
+	private final IToken tagToken = new Token(
+			new TextAttribute(JFaceResources.getColorRegistry().get(SyntaxThemeConstants.TAG_COLOR)));
 
 	@Override
 	public IToken evaluate(ICharacterScanner scanner) {

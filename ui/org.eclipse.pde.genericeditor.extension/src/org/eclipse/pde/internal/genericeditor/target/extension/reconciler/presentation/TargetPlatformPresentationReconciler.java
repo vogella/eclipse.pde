@@ -15,9 +15,10 @@
  *******************************************************************************/
 package org.eclipse.pde.internal.genericeditor.target.extension.reconciler.presentation;
 
-import org.eclipse.core.runtime.preferences.InstanceScope;
-import org.eclipse.jface.preference.IPreferenceStore;
+import java.util.Set;
+
 import org.eclipse.jface.resource.ColorRegistry;
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IRegion;
@@ -36,15 +37,17 @@ import org.eclipse.jface.text.rules.Token;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.swt.widgets.Display;
-import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.editors.text.SyntaxThemeConstants;
-import org.eclipse.ui.preferences.ScopedPreferenceStore;
 
 /**
  * Presentation reconclier collecting different rules for syntax coloring.
  */
 
 public class TargetPlatformPresentationReconciler extends PresentationReconciler {
+
+	private static final Set<String> SYNTAX_COLORS = Set.of(SyntaxThemeConstants.DIRECTIVE_COLOR,
+			SyntaxThemeConstants.STRING_COLOR, SyntaxThemeConstants.COMMENT_COLOR, SyntaxThemeConstants.TAG_COLOR,
+			SyntaxThemeConstants.ATTRIBUTE_NAME_COLOR);
 
 	private final class InvalidatingListener implements IPropertyChangeListener {
 		ITextViewer viewer;
@@ -55,7 +58,7 @@ public class TargetPlatformPresentationReconciler extends PresentationReconciler
 
 		@Override
 		public void propertyChange(PropertyChangeEvent event) {
-			if ("overriddenByCSS".equals(event.getProperty())) {
+			if (!SYNTAX_COLORS.contains(event.getProperty())) {
 				return;
 			}
 			setDamageRepairerScanner();
@@ -76,8 +79,7 @@ public class TargetPlatformPresentationReconciler extends PresentationReconciler
 
 	@Override
 	public void install(ITextViewer viewer) {
-		IPreferenceStore store = new ScopedPreferenceStore(InstanceScope.INSTANCE, "org.eclipse.ui.workbench");
-		store.addPropertyChangeListener(listener);
+		JFaceResources.getColorRegistry().addListener(listener);
 		listener.setViewer(viewer);
 		super.install(viewer);
 	}
@@ -85,8 +87,7 @@ public class TargetPlatformPresentationReconciler extends PresentationReconciler
 	@Override
 	public void uninstall() {
 		super.uninstall();
-		IPreferenceStore store = new ScopedPreferenceStore(InstanceScope.INSTANCE, "org.eclipse.ui.workbench");
-		store.removePropertyChangeListener(listener);
+		JFaceResources.getColorRegistry().removeListener(listener);
 	}
 
 	private void setDamageRepairerScanner() {
@@ -94,7 +95,7 @@ public class TargetPlatformPresentationReconciler extends PresentationReconciler
 			return;
 		}
 		RuleBasedScanner scanner = new RuleBasedScanner();
-		ColorRegistry manager = PlatformUI.getWorkbench().getThemeManager().getCurrentTheme().getColorRegistry();
+		ColorRegistry manager = JFaceResources.getColorRegistry();
 		IRule[] rules = new IRule[6];
 		rules[0] = new SingleLineRule("<?", "?>", //$NON-NLS-1$ //$NON-NLS-2$
 				new Token(new TextAttribute(manager.get(SyntaxThemeConstants.DIRECTIVE_COLOR))));

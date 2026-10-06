@@ -13,12 +13,12 @@
  *******************************************************************************/
 package org.eclipse.pde.internal.ui.editor.text;
 
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.swt.graphics.Color;
-import org.eclipse.ui.PlatformUI;
 
 /**
- * The syntax colors of the PDE XML source viewers, taken from the current
- * workbench theme.
+ * The syntax colors of the PDE XML source viewers, taken from the JFace color
+ * registry, which the workbench keeps in sync with the current theme.
  */
 public final class XMLSyntaxColors {
 
@@ -29,13 +29,10 @@ public final class XMLSyntaxColors {
 	}
 
 	/**
-	 * Returns the theme color with the given id, or {@code null} to draw in the
-	 * viewer's foreground when no workbench is running.
+	 * Returns the color with the given id, or {@code null} to draw in the
+	 * viewer's foreground when the registry does not define it.
 	 */
 	public static Color get(String colorId) {
-		if (!PlatformUI.isWorkbenchRunning()) {
-			return null;
-		}
-		return PlatformUI.getWorkbench().getThemeManager().getCurrentTheme().getColorRegistry().get(colorId);
+		return JFaceResources.getColorRegistry().get(colorId);
 	}
 }

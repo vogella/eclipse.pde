@@ -13,6 +13,7 @@
  *******************************************************************************/
 package org.eclipse.pde.internal.ui.editor.text;
 
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.ITextDoubleClickStrategy;
 import org.eclipse.jface.text.ITextViewer;
@@ -32,9 +33,7 @@ import org.eclipse.pde.internal.ui.editor.ISortableContentOutlinePage;
 import org.eclipse.pde.internal.ui.editor.PDESourcePage;
 import org.eclipse.pde.internal.ui.editor.context.XMLDocumentSetupParticpant;
 import org.eclipse.swt.custom.StyledText;
-import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.editors.text.SyntaxThemeConstants;
-import org.eclipse.ui.themes.IThemeManager;
 
 /**
  * Source viewer configuration for the XML Source editors
@@ -105,15 +104,15 @@ public class XMLConfiguration extends ChangeAwareSourceViewerConfiguration {
 	}
 
 	private static boolean isSyntaxColorChange(String property) {
-		return IThemeManager.CHANGE_CURRENT_THEME.equals(property) || property.equals(SyntaxThemeConstants.TAG_COLOR)
+		return property.equals(SyntaxThemeConstants.TAG_COLOR)
 				|| property.equals(SyntaxThemeConstants.ATTRIBUTE_NAME_COLOR) || property.equals(SyntaxThemeConstants.STRING_COLOR)
 				|| property.equals(SyntaxThemeConstants.COMMENT_COLOR) || property.equals(SyntaxThemeConstants.DIRECTIVE_COLOR)
 				|| property.equals(XMLSyntaxColors.EXTERNALIZED_STRING_COLOR);
 	}
 
 	/**
-	 * Redraws the viewer with the new colors when the workbench theme or one of
-	 * its colors changes.
+	 * Redraws the viewer with the new colors when one of the syntax colors
+	 * changes, for example because the theme was switched.
 	 */
 	private class ThemeAwarePresentationReconciler extends PresentationReconciler {
 
@@ -153,16 +152,12 @@ public class XMLConfiguration extends ChangeAwareSourceViewerConfiguration {
 		public void install(ITextViewer viewer) {
 			super.install(viewer);
 			fViewer = viewer;
-			if (PlatformUI.isWorkbenchRunning()) {
-				PlatformUI.getWorkbench().getThemeManager().addPropertyChangeListener(fThemeListener);
-			}
+			JFaceResources.getColorRegistry().addListener(fThemeListener);
 		}
 
 		@Override
 		public void uninstall() {
-			if (PlatformUI.isWorkbenchRunning()) {
-				PlatformUI.getWorkbench().getThemeManager().removePropertyChangeListener(fThemeListener);
-			}
+			JFaceResources.getColorRegistry().removeListener(fThemeListener);
 			fViewer = null;
 			super.uninstall();
 		}
