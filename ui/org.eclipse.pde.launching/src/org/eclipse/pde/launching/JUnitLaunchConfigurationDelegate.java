@@ -54,7 +54,6 @@ import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.launching.IJavaLaunchConfigurationConstants;
 import org.eclipse.jdt.launching.IVMInstall;
 import org.eclipse.jdt.launching.IVMRunner;
-import org.eclipse.jdt.launching.JavaRuntime;
 import org.eclipse.osgi.util.ManifestElement;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.pde.core.plugin.IFragment;
@@ -317,10 +316,8 @@ public class JUnitLaunchConfigurationDelegate extends org.eclipse.jdt.junit.laun
 		programArgs.add("-testpluginname"); //$NON-NLS-1$
 		programArgs.add(testPlugin.getId());
 
-		boolean isModular = JavaRuntime.isModularJava(launcher);
-		if (isModular) {
-			VMHelper.addNewArgument(vmArguments, "--add-modules", "ALL-SYSTEM"); //$NON-NLS-1$//$NON-NLS-2$
-		}
+		LaunchArgumentsHelper.addSystemModulesArgument(vmArguments, launcher);
+		LaunchArgumentsHelper.addNativeAccessArgument(vmArguments, launcher);
 		//  if element is a test class annotated with @RunWith(JUnitPlatform.class, we add this in program arguments
 		@SuppressWarnings("restriction")
 		String attrRunWithJunitPlatformAnnotation = org.eclipse.jdt.internal.junit.launcher.JUnitLaunchConfigurationConstants.ATTR_RUN_WITH_JUNIT_PLATFORM_ANNOTATION;
