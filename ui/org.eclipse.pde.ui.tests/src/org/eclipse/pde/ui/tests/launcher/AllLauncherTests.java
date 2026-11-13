@@ -25,6 +25,7 @@ import org.junit.platform.suite.api.Suite;
 	LaunchConfigurationMigrationTest.class, //
 	ProductEditorLaunchingTest.class, //
 	ValidationDialogTest.class, //
+	SystemModulesArgumentTest.class, //
 })
 public class AllLauncherTests {
 

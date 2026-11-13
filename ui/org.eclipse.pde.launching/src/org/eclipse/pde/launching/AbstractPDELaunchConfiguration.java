@@ -180,7 +180,7 @@ public abstract class AbstractPDELaunchConfiguration extends LaunchConfiguration
 		List<String> arguments = new ArrayList<>(Arrays.asList(args));
 		boolean isModular = JavaRuntime.isModularJava(vmInstall);
 		if (isModular) {
-			VMHelper.addNewArgument(arguments, "--add-modules", "ALL-SYSTEM"); //$NON-NLS-1$//$NON-NLS-2$
+			VMHelper.addNewArgument(arguments, "--add-modules", VMHelper.getSystemModules(vmInstall)); //$NON-NLS-1$
 		}
 		if (isEclipseBundleGreaterThanVersion(4, 24) // Don't add allow flags for eclipse before 4.24
 				&& vmInstall instanceof AbstractVMInstall install) {

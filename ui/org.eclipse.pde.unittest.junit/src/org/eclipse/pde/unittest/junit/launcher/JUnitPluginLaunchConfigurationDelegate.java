@@ -561,7 +561,7 @@ public class JUnitPluginLaunchConfigurationDelegate extends AbstractJavaLaunchCo
 		programArgs.add(getTestPluginId(configuration));
 		boolean isModular = JavaRuntime.isModularJava(launcher);
 		if (isModular) {
-			VMHelper.addNewArgument(vmArguments, "--add-modules", "ALL-SYSTEM"); //$NON-NLS-1$//$NON-NLS-2$
+			VMHelper.addNewArgument(vmArguments, "--add-modules", VMHelper.getSystemModules(launcher)); //$NON-NLS-1$
 		}
 		// if element is a test class annotated with @RunWith(JUnitPlatform.class, we
 		// add this in program arguments

@@ -14,12 +14,18 @@
  *******************************************************************************/
 package org.eclipse.pde.internal.launching.launcher;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
@@ -236,6 +242,31 @@ public class VMHelper {
 		if (arguments.stream().noneMatch(a -> a.startsWith(key + "="))) { //$NON-NLS-1$
 			arguments.add(key + "=" + value); //$NON-NLS-1$
 		}
+	}
+
+	/**
+	 * Returns the value of {@code --add-modules} that resolves every system
+	 * module of the given VM except the incubator ones, which make the JVM
+	 * print a warning on each launch, or {@code ALL-SYSTEM} if the VM does
+	 * not list its modules in its {@code release} file.
+	 */
+	public static String getSystemModules(IVMInstall vmInstall) {
+		File location = vmInstall.getInstallLocation();
+		if (location != null) {
+			try (Stream<String> lines = Files.lines(location.toPath().resolve("release"))) { //$NON-NLS-1$
+				String modules = lines.filter(line -> line.startsWith("MODULES=")).findFirst() //$NON-NLS-1$
+						.map(line -> Arrays.stream(line.substring(8).replace("\"", "").trim().split("\\s+")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+								.filter(module -> !module.isEmpty() && !module.startsWith("jdk.incubator.")) //$NON-NLS-1$
+								.collect(Collectors.joining(","))) //$NON-NLS-1$
+						.orElse(""); //$NON-NLS-1$
+				if (!modules.isEmpty()) {
+					return modules;
+				}
+			} catch (IOException | UncheckedIOException e) {
+				// no readable release file, resolve all system modules
+			}
+		}
+		return "ALL-SYSTEM"; //$NON-NLS-1$
 	}
 
 }
