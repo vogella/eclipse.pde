@@ -23,6 +23,7 @@ import java.util.regex.PatternSyntaxException;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.dialogs.MessageDialogWithToggle;
@@ -39,6 +40,7 @@ import org.eclipse.pde.internal.core.ICoreConstants;
 import org.eclipse.pde.internal.core.PDECore;
 import org.eclipse.pde.internal.core.PDEPreferencesManager;
 import org.eclipse.pde.internal.core.target.P2TargetUtils;
+import org.eclipse.pde.internal.core.target.SharedBundlePool;
 import org.eclipse.pde.internal.core.target.TargetPlatformService;
 import org.eclipse.pde.internal.ui.IHelpContextIds;
 import org.eclipse.pde.internal.ui.IPreferenceConstants;
@@ -54,6 +56,7 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.DirectoryDialog;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Text;
@@ -84,6 +87,9 @@ public class MainPreferencePage extends PreferencePage implements IWorkbenchPref
 	private Button fRunAPIAnalysisBuilderAsJob;
 	private Button fUpdateClasspathInParallel;
 	private Text fTestPluginPatternText;
+	private Button fShareBundlePool;
+	private Text fBundlePoolLocation;
+	private Button fBundlePoolBrowse;
 
 
 	public MainPreferencePage() {
@@ -211,6 +217,21 @@ public class MainPreferencePage extends PreferencePage implements IWorkbenchPref
 
 		Group bundlePoolGp = SWTFactory.createGroup(composite, PDEUIMessages.MainPreferencePage_BundlePoolPrefsGroup, 2,
 				1, GridData.FILL_HORIZONTAL);
+		IEclipsePreferences poolPrefs = SharedBundlePool.getPreferences();
+		fShareBundlePool = SWTFactory.createCheckButton(bundlePoolGp, PDEUIMessages.MainPreferencePage_BundlePoolShare,
+				null, poolPrefs.getBoolean(SharedBundlePool.PREF_SHARED, true), 2);
+		fShareBundlePool.addSelectionListener(widgetSelectedAdapter(e -> updateBundlePoolLocationEnablement()));
+		fBundlePoolLocation = SWTFactory.createSingleText(bundlePoolGp, 1);
+		fBundlePoolLocation.setMessage(SharedBundlePool.getDefaultLocation().toOSString());
+		fBundlePoolLocation.setText(poolPrefs.get(SharedBundlePool.PREF_LOCATION, "")); //$NON-NLS-1$
+		fBundlePoolBrowse = SWTFactory.createPushButton(bundlePoolGp, PDEUIMessages.MainPreferencePage_BundlePoolBrowse,
+				null);
+		fBundlePoolBrowse.addSelectionListener(widgetSelectedAdapter(e -> handleBrowseBundlePool()));
+		WidgetFactory.label(SWT.WRAP)
+				.layoutData(GridDataFactory.swtDefaults().align(SWT.FILL, SWT.CENTER).grab(true, false).span(2, 1)
+						.create())
+				.text(PDEUIMessages.MainPreferencePage_BundlePoolRestart).create(bundlePoolGp);
+		updateBundlePoolLocationEnablement();
 		WidgetFactory.label(SWT.WRAP)
 				.layoutData(GridDataFactory.swtDefaults().align(SWT.FILL, SWT.CENTER).grab(true, false).create())
 				.text(PDEUIMessages.MainPreferencePage_BundlePoolPrefsCleanDesc).create(bundlePoolGp);
@@ -219,6 +240,41 @@ public class MainPreferencePage extends PreferencePage implements IWorkbenchPref
 				.addSelectionListener(SelectionListener.widgetSelectedAdapter(this::handleClean));
 
 		return composite;
+	}
+
+	private void updateBundlePoolLocationEnablement() {
+		fBundlePoolLocation.setEnabled(fShareBundlePool.getSelection());
+		fBundlePoolBrowse.setEnabled(fShareBundlePool.getSelection());
+	}
+
+	private void handleBrowseBundlePool() {
+		DirectoryDialog dialog = new DirectoryDialog(getShell());
+		String current = fBundlePoolLocation.getText().strip();
+		dialog.setFilterPath(current.isEmpty() ? SharedBundlePool.getDefaultLocation().toOSString() : current);
+		String result = dialog.open();
+		if (result != null) {
+			fBundlePoolLocation.setText(result);
+		}
+	}
+
+	private void saveBundlePoolPreferences() {
+		IEclipsePreferences poolPrefs = SharedBundlePool.getPreferences();
+		if (fShareBundlePool.getSelection()) {
+			poolPrefs.remove(SharedBundlePool.PREF_SHARED);
+		} else {
+			poolPrefs.putBoolean(SharedBundlePool.PREF_SHARED, false);
+		}
+		String location = fBundlePoolLocation.getText().strip();
+		if (location.isEmpty()) {
+			poolPrefs.remove(SharedBundlePool.PREF_LOCATION);
+		} else {
+			poolPrefs.put(SharedBundlePool.PREF_LOCATION, location);
+		}
+		try {
+			poolPrefs.flush();
+		} catch (BackingStoreException e) {
+			PDEPlugin.log(e);
+		}
 	}
 
 	private void handleClean(SelectionEvent event) {
@@ -353,6 +409,7 @@ public class MainPreferencePage extends PreferencePage implements IWorkbenchPref
 			PDEPreferencesManager prefs = PDECore.getDefault().getPreferencesManager();
 			prefs.setValue(ICoreConstants.UPDATE_CLASSPATH_IN_PARALLEL, updateClasspathInParallel);
 		}
+		saveBundlePoolPreferences();
 		PDECore.getDefault().getPreferencesManager().savePluginPreferences();
 		PDEPlugin.getDefault().getPreferenceManager().savePluginPreferences();
 		return super.performOk();
@@ -371,6 +428,9 @@ public class MainPreferencePage extends PreferencePage implements IWorkbenchPref
 		fOverwriteBuildFiles.setSelection(true);
 		fShowSourceBundles.setSelection(false);
 		fPromptOnRemove.setSelection(true);
+		fShareBundlePool.setSelection(true);
+		fBundlePoolLocation.setText(""); //$NON-NLS-1$
+		updateBundlePoolLocationEnablement();
 
 		fAddToJavaSearch.setSelection(store.getDefaultBoolean(IPreferenceConstants.ADD_TO_JAVA_SEARCH));
 		fShowTargetStatus.setSelection(store.getDefaultBoolean(IPreferenceConstants.SHOW_TARGET_STATUS));

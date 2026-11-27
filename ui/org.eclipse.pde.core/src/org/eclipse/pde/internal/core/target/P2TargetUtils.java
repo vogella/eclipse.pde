@@ -126,10 +126,18 @@ public class P2TargetUtils {
 	}
 
 	/**
-	 * Path to the local directory where the local bundle pool is stored for p2 profile
-	 * based targets.
+	 * Path to the bundle pool of this workspace, used when the shared bundle pool
+	 * is disabled.
 	 */
-	public static final IPath BUNDLE_POOL = PDECore.getDefault().getStateLocation().append(BUNDLE_POOL_SUFFIX);
+	static final IPath WORKSPACE_BUNDLE_POOL = PDECore.getDefault().getStateLocation().append(BUNDLE_POOL_SUFFIX);
+
+	/**
+	 * Path to the directory where the bundle pool is stored for p2 profile based
+	 * targets, either the {@link SharedBundlePool} or the pool of this workspace.
+	 * Read once, so a changed preference takes effect after a restart.
+	 */
+	public static final IPath BUNDLE_POOL = SharedBundlePool.isEnabled() ? SharedBundlePool.getLocation()
+			: WORKSPACE_BUNDLE_POOL;
 
 	/**
 	 * Path to the local directory where install folders are created for p2 profile
@@ -327,14 +335,31 @@ public class P2TargetUtils {
 	public static void garbageCollect() {
 		try {
 			IProfile[] profiles = getProfileRegistry().getProfiles();
+			String sharedPool = isSharedBundlePool() ? BUNDLE_POOL.toOSString() : null;
 			for (IProfile profile : profiles) {
-				if (profile.getProfileId().startsWith(PROFILE_ID_PREFIX)) {
+				// p2's collector only knows the profiles of this workspace, so it must not touch the shared pool
+				if (profile.getProfileId().startsWith(PROFILE_ID_PREFIX)
+						&& (sharedPool == null || !sharedPool.equals(profile.getProperty(IProfile.PROP_CACHE)))) {
 					getGarbageCollector().runGC(profile);
 				}
 			}
+			if (sharedPool != null) {
+				SharedBundlePool.garbageCollect();
+			}
 		} catch (CoreException e) {
-			// XXX likely should log something here.
+			PDECore.log(e);
 		}
+	}
+
+	/**
+	 * Returns whether the bundle pool is shared with other workspaces.
+	 */
+	public static boolean isSharedBundlePool() {
+		return !BUNDLE_POOL.equals(WORKSPACE_BUNDLE_POOL);
+	}
+
+	static Path getAgentDirectory() {
+		return Path.of(AGENT_LOCATION);
 	}
 
 	/**
@@ -471,6 +496,9 @@ public class P2TargetUtils {
 		if (!"file".equals(location.getScheme())) { //$NON-NLS-1$
 			return false;
 		}
+		if (URIUtil.sameURI(location, BUNDLE_POOL.toFile().toURI())) {
+			return true;
+		}
 		String path = location.getPath();
 		if (path.endsWith("/")) { //$NON-NLS-1$
 			path = path.substring(0, path.length() - 1);
@@ -528,6 +556,10 @@ public class P2TargetUtils {
 			return false;
 		}
 
+		// a profile from before the bundle pool location changed is re-provisioned into the current pool
+		if (!BUNDLE_POOL.toOSString().equals(profile.getProperty(IProfile.PROP_CACHE))) {
+			return false;
+		}
 		// check if all environments setting is the same
 		boolean all = false;
 		String value = profile.getProperty(PROP_ALL_ENVIRONMENTS);
@@ -840,11 +872,14 @@ public class P2TargetUtils {
 
 		try {
 			// Now resolve the profile and refresh the relate IU containers
-			if (getIncludeAllRequired()) {
-				resolveWithPlanner(target, profile, progress.split(60));
-			} else {
-				resolveWithSlicer(target, profile, progress.split(60));
-			}
+			IProfile newProfile = profile;
+			SharedBundlePool.provision(m -> {
+				if (getIncludeAllRequired()) {
+					resolveWithPlanner(target, newProfile, m);
+				} else {
+					resolveWithSlicer(target, newProfile, m);
+				}
+			}, progress.split(60));
 			fProfile = profile;
 			// If we are updating a profile then delete the old snapshot on success.
 			notify(target, progress.split(15));
